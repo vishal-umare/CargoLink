@@ -1,0 +1,35 @@
+================================================================================
+PHASE 10 (BATCH 1) SUMMARY: Authentication Layer Migration
+================================================================================
+
+1. WHAT WAS IMPLEMENTED IN THIS STEP
+--------------------------------------------------------------------------------
+- Migrated `frontend/src/hooks/useAuth.tsx` entirely away from Supabase Auth.
+- Replaced `supabase.auth.signInWithPassword` and `supabase.auth.signUp` with our custom `apiFetch` calls pointing to `/api/auth/login` and `/api/auth/register`.
+- Implemented robust `localStorage` caching to store the `token` and the `user` payload cleanly and separately.
+- Created `frontend/src/lib/api.ts` which provides a central `apiFetch` wrapper. This automatically injects the `Authorization: Bearer <token>` into every request across the app.
+- Added comprehensive global 401 Unauthorized handling in `apiFetch`. If a token expires, it fires an event, instantly clears state, and safely redirects to the login screen.
+- Maintained exact type compatibility with the rest of the application so that the UI logic did not break.
+- Ensured logout (`signOut`) cleanly wipes `localStorage` and all React state.
+
+2. WHY THIS STEP IS IMPORTANT
+--------------------------------------------------------------------------------
+Authentication is the absolute foundation of the app. Before we can replace the data fetching logic (loads, bookings), we need to ensure the user can actually get a valid JWT token from our new Node.js server. By doing this first, and by building the `apiFetch` wrapper, every other batch in this migration becomes significantly easier. 
+
+3. HOW IT WORKS (SIMPLE EXPLANATION)
+--------------------------------------------------------------------------------
+Previously, `useAuth` relied on a hidden WebSocket connection to Supabase. Now, we use a standard REST API approach:
+1. When you log in, the Node server sends back a Token.
+2. We save that Token to your browser's `localStorage` (like a digital wallet).
+3. Every time you make an API request anywhere in the app, `apiFetch` automatically takes the token from your wallet and hands it to the backend.
+4. If the backend says "Token Expired", `apiFetch` automatically empties your wallet and sends you to the login screen.
+
+4. KEY CONCEPTS USED
+--------------------------------------------------------------------------------
+- Custom Fetch Wrapper: Centralizing API logic into one function (`apiFetch`) so we don't have to write `headers: { Authorization }` on every single file.
+- Event Dispatching: Using `window.dispatchEvent` to tell React context that the token expired so it can re-render the app.
+
+5. COMMON MISTAKES TO AVOID
+--------------------------------------------------------------------------------
+- Forgetting to Parse JSON: `localStorage.getItem('user')` returns a String, not an Object. You must use `JSON.parse()` to turn it back into usable data.
+- State Leaks: Failing to set `user`, `session`, and `profile` to `null` on logout can cause phantom sessions where the UI thinks someone is logged in when they aren't.

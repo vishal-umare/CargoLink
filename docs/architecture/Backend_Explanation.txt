@@ -1,0 +1,91 @@
+================================================================================
+CargoLink Project - Backend Architecture & Workflow Analysis
+================================================================================
+
+1. ARCHITECTURE OVERVIEW
+--------------------------------------------------------------------------------
+The CargoLink project uses a "Backend-as-a-Service" (BaaS) architecture powered by Supabase. 
+Unlike traditional stacks (e.g., Node.js/Express, Python/Django), there is no dedicated 
+backend server running the business logic. Instead, the React frontend communicates 
+directly with Supabase's cloud infrastructure.
+
+Supabase provides three main backend pillars for this application:
+  A. PostgreSQL Database (Data Storage & Security)
+  B. Supabase Auth (User Registration, Login, Sessions)
+  C. Edge Functions (Serverless functions for secure operations)
+
+
+2. KEY FILES AND THEIR ROLES
+--------------------------------------------------------------------------------
+Below are the critical files that make up the "backend" logic and connections:
+
+* src/integrations/supabase/client.ts
+  - Role: The Bridge/Remote Control.
+  - Job: Initializes the `@supabase/supabase-js` client using the project's URL 
+    and public API key (loaded from `.env`). 
+  - Connection: The frontend imports the `supabase` object from this file to make 
+    direct API calls to the database and authentication services.
+
+* src/integrations/supabase/types.ts
+  - Role: The Database Blueprint.
+  - Job: Contains TypeScript definitions automatically generated from the Supabase 
+    database schema. 
+  - Connection: Ensures the frontend code knows exactly what the database tables 
+    look like (e.g., `profiles`, `user_roles`, `loads`), preventing type errors 
+    when fetching or inserting data.
+
+* supabase/migrations/20251225080319_de247605-ab82-4b0f-873b-b803d3436088.sql
+  - Role: The Database Setup & Security Rules.
+  - Job: This SQL file defines the actual structure of the Postgres database.
+    It creates tables (`profiles`, `user_roles`), sets up Row Level Security (RLS) 
+    policies, and creates triggers.
+  - Key Logic Found Here: 
+    - Auto-Profile Creation: It contains a Postgres Trigger (`on_auth_user_created`) 
+      that automatically creates a row in the `profiles` and `user_roles` tables 
+      whenever a new user signs up via Supabase Auth.
+    - Security Policies: Defines rules like "Users can view their own profile" 
+      using RLS (`auth.uid() = id`).
+
+* supabase/functions/get-mapbox-token/index.ts
+  - Role: Secure Edge Function.
+  - Job: A serverless function (written in Deno) that securely provides the 
+    Mapbox API token to the frontend.
+  - Connection: Because it's unsafe to store API keys in frontend code, the 
+    React app calls this function. The function verifies the user's Supabase 
+    Auth token, and if they are logged in, returns the hidden `MAPBOX_PUBLIC_TOKEN`.
+
+
+3. HOW THE DATA FLOW WORKS (THE WORKFLOW)
+--------------------------------------------------------------------------------
+
+Flow 1: User Registration
+  1. Frontend sends email/password and metadata (like role, name) to Supabase Auth.
+  2. Supabase Auth registers the user securely.
+  3. A Postgres Trigger (defined in the SQL migration file) fires immediately.
+  4. The trigger automatically takes the user's metadata and inserts a new record 
+     into the `profiles` table and `user_roles` table. 
+  5. The frontend receives a successful login and stores a secure session token 
+     in `localStorage`.
+
+Flow 2: Data Operations (CRUD)
+  1. A Shipper fills out a form to create a new "load".
+  2. The frontend uses the `supabase` client (from `client.ts`) to send a direct 
+     `INSERT` request to the PostgreSQL database.
+  3. Postgres receives the request and checks its Row Level Security (RLS) policies.
+  4. Because the user's Auth token is automatically attached to the request, Postgres 
+     knows who they are and allows the insert.
+  5. The UI updates based on the response.
+
+Flow 3: Requesting Secure Third-Party Keys
+  1. The frontend needs to render a Mapbox map but doesn't have the API key.
+  2. It makes an HTTP request to the `/get-mapbox-token` Edge Function, attaching 
+     the user's authorization token.
+  3. The Edge Function verifies the token.
+  4. The Edge Function reads the secret key stored in the Supabase server environment.
+  5. It returns the key to the frontend so the map can be rendered.
+
+================================================================================
+Summary: The Vite/React frontend is the "brain", and it uses the Supabase client 
+to directly command the PostgreSQL Database and Auth system in the cloud. Security 
+is handled entirely at the database level using Row Level Security (RLS) and triggers.
+================================================================================

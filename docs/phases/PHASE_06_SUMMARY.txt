@@ -1,0 +1,34 @@
+================================================================================
+PHASE 6 SUMMARY: Driver Booking / Matching System
+================================================================================
+
+1. WHAT WAS IMPLEMENTED IN THIS STEP
+--------------------------------------------------------------------------------
+- Created `bookingController.js` which acts as the matchmaking engine. It handles:
+  1. Drivers requesting a load (`requestLoad`).
+  2. Shippers accepting or rejecting those requests (`updateBookingStatus`).
+  3. Drivers seeing their own requests (`getDriverBookings`).
+  4. Shippers seeing who applied for their loads (`getLoadBookings`).
+- Created `bookingRoutes.js` and securely linked it to the main `server.js` at the `/api/bookings` path.
+- Applied role-based authorization so ONLY drivers can request loads, and ONLY shippers can accept/reject them.
+
+2. WHY THIS STEP IS IMPORTANT
+--------------------------------------------------------------------------------
+This is the core business logic of CargoLink. Drivers need a way to say "I want this job!" without accidentally creating duplicate requests or interfering with other drivers. Shippers need a safe way to review applications and pick the best driver without the system breaking. This step bridges the gap between the `User` and the `Load`.
+
+3. HOW IT WORKS (SIMPLE EXPLANATION)
+--------------------------------------------------------------------------------
+- The Request: A driver browses the loads, clicks "Book", and sends the `loadId` to the server. The server first checks if the driver already applied. If not, it creates a new "Booking" ticket with a status of "requested".
+- The Review: The shipper checks their dashboard and calls the API to see all bookings for their load. Because of Mongoose's `.populate()`, the shipper can instantly see the driver's name, email, and vehicle details (like "Ford Transit Van") right on the ticket.
+- The Decision: The shipper sends a "PUT" request to update the booking to "accepted". Our code updates the booking ticket, AND it automatically updates the actual Load's status from "pending" to "assigned", so other drivers know it's no longer available.
+
+4. KEY CONCEPTS USED
+--------------------------------------------------------------------------------
+- Two-way Populating: We used `.populate('loadId')` so drivers can see the load details of their bookings, and `.populate('driverId')` so shippers can see the driver details.
+- Prevent Duplicates logic: We used `Booking.findOne()` to check for an existing match between a `loadId` and a `driverId` BEFORE saving a new request.
+- Multi-Model Updates: In one single API call (when a shipper accepts a driver), we updated the `Booking` collection AND the `Load` collection simultaneously.
+
+5. COMMON MISTAKES TO AVOID
+--------------------------------------------------------------------------------
+- Not checking if the item exists: A driver might try to request a load that was just deleted. We must always do `const load = await Load.findById(loadId)` first, and if it's missing, return a `404 Not Found` error.
+- Updating the wrong status: If you forget to update the Load status to 'assigned' after accepting a driver, the load will still look "pending" to everyone else, leading to double-bookings!

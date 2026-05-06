@@ -1,0 +1,69 @@
+================================================================================
+PHASE 11 (BATCH 2) SUMMARY: Shipper Pages Migration
+================================================================================
+
+1. WHAT WAS IMPLEMENTED IN THIS STEP
+--------------------------------------------------------------------------------
+- Updated the backend `Load` Mongoose model to match all frontend fields.
+- Implemented `DELETE /api/loads/:id` endpoint.
+- Migrated `PostCargo.tsx`, `MyLoads.tsx`, `LoadHistory.tsx`, and `Dashboard.tsx`
+  to use `apiFetch()` instead of Supabase.
+- Added a global Express 5 error handler to `server.js`.
+- Improved frontend error handling to display actual backend error messages.
+
+2. WHY THIS STEP IS IMPORTANT
+--------------------------------------------------------------------------------
+This batch fully disconnects the Shipper workflow from Supabase.
+
+3. HOW IT WORKS (SIMPLE EXPLANATION)
+--------------------------------------------------------------------------------
+- PostCargo sends JSON to `POST /api/loads` via `apiFetch`.
+- MyLoads fetches from `GET /api/loads/myloads` and deletes via `DELETE /api/loads/:id`.
+- Dashboard and LoadHistory fetch from the same myloads endpoint and filter locally.
+
+4. KEY CONCEPTS USED
+--------------------------------------------------------------------------------
+- Schema Alignment: Mongoose schema matches React form fields exactly.
+- React Query: Kept intact, only internal fetch logic swapped.
+- Express 5 Global Error Handler: Catches unhandled async errors.
+
+5. COMMON MISTAKES TO AVOID
+--------------------------------------------------------------------------------
+- Mismatched field names between frontend payload and backend schema.
+- Not properly killing old Node processes before restarting — zombie processes
+  can hold the port and serve stale code.
+
+================================================================================
+*** ROOT CAUSE OF THE 500 ERROR IN POST /api/loads ***
+================================================================================
+
+SYMPTOM:
+  POST /api/loads returned `500 { message: "Server error creating load" }`
+  even after code changes to the controller and model.
+
+ROOT CAUSE:
+  A ZOMBIE NODE PROCESS (PID 12232, started at 20:34) was holding port 5000 and
+  serving STALE CODE from before the migration. Every subsequent `npm start`
+  silently launched a new process that connected to MongoDB but FAILED to bind
+  to port 5000 (EADDRINUSE). The old process continued serving requests with the
+  original `pickupLocation`/`deliveryLocation` schema, causing Mongoose validation
+  errors that resulted in the 500 response.
+
+  Additionally, the original Load schema had:
+    - Field names: `pickupLocation`, `deliveryLocation`, `shipperId`
+    - Status enum: `pending` (not `open`)
+  But the migrated frontend was sending:
+    - Field names: `pickup_city`, `drop_city`
+    - Expected status: `open`
+
+FIX APPLIED:
+  1. Killed ALL Node.js processes (`Get-Process -Name "node" | Stop-Process -Force`)
+  2. Restarted `npm start` — fresh server loaded the updated code
+  3. Verified: POST /api/loads now returns `201` with full load data
+  4. Added global error handler in `server.js` for Express 5 async error safety
+  5. Improved frontend `PostCargo.tsx` to show actual backend error messages
+
+LESSON LEARNED:
+  On Windows, always verify no zombie Node processes are holding the port:
+    `netstat -ano | findstr :5000 | findstr LISTENING`
+  Then kill the specific PID if it's stale.

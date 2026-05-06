@@ -1,0 +1,69 @@
+================================================================================
+MYLOADS_DEBUG_SUMMARY: Blank Page Fix
+================================================================================
+
+1. ROOT CAUSE
+--------------------------------------------------------------------------------
+The /shipper/my-loads page was crashing with a blank white screen because of a
+DATA FORMAT MISMATCH between the backend and frontend:
+
+  Mongoose (MongoDB) sends:   { createdAt: "2026-...", _id: "69fa..." }
+  Frontend (Supabase types):  { created_at: "2026-...", id: "69fa..." }
+
+The LoadCard component (line 34) was calling:
+  formatDistanceToNow(new Date(load.created_at))
+
+Since `load.created_at` was UNDEFINED (Mongoose sends `createdAt` not `created_at`),
+this evaluated to: new Date(undefined) → Invalid Date.
+Then `formatDistanceToNow(Invalid Date)` THREW an exception, which crashed the
+entire React component tree → blank page.
+
+The same crash-prone pattern existed in:
+  - LoadCard.tsx (line 34)
+  - LoadHistory.tsx (line 62)
+  - Dashboard.tsx (line 170) 
+  - Driver Dashboard.tsx (line 180)
+  - Driver Matches.tsx (line 284, 369)
+
+2. FIX APPLIED
+--------------------------------------------------------------------------------
+A) BACKEND: Load Model toJSON Transform (backend/models/Load.js)
+   Added timestamp mapping in the Mongoose toJSON transform:
+     ret.created_at = ret.createdAt;
+     ret.updated_at = ret.updatedAt;
+   This ensures the API response includes BOTH formats, maintaining backward
+   compatibility with Supabase-typed frontend code.
+
+B) FRONTEND: Safe Date Rendering (Multiple files)
+   Made all date rendering resilient to missing/undefined values:
+     BEFORE: formatDistanceToNow(new Date(load.created_at))
+     AFTER:  load.created_at
+               ? formatDistanceToNow(new Date(load.created_at))
+               : 'Recently'
+   
+   Files fixed:
+     - frontend/src/components/loads/LoadCard.tsx
+     - frontend/src/pages/shipper/LoadHistory.tsx
+     - frontend/src/pages/shipper/Dashboard.tsx
+     - frontend/src/pages/driver/Dashboard.tsx
+     - frontend/src/pages/driver/Matches.tsx
+     - frontend/src/pages/driver/FindLoads.tsx
+
+C) DRIVER PAGES MIGRATION (Batch 3 Bonus)
+   While fixing the blank page, I also migrated ALL driver pages from
+   Supabase to apiFetch:
+     - driver/Dashboard.tsx → apiFetch('/loads')
+     - driver/FindLoads.tsx → apiFetch('/loads') + apiFetch('/loads/:id/accept')
+     - driver/Matches.tsx → apiFetch('/loads') + accept/complete endpoints
+
+D) NEW BACKEND ROUTES
+   Added two new endpoints for driver workflow:
+     - PUT /api/loads/:id/accept  → Driver accepts a load
+     - PUT /api/loads/:id/complete → Driver marks a load as delivered
+
+3. VERIFICATION
+--------------------------------------------------------------------------------
+  - TypeScript compilation: PASSES (npx tsc --noEmit)
+  - API test: POST /api/loads returns created_at field correctly
+  - API test: GET /api/loads/myloads returns loads with id + created_at
+  - All date rendering includes null checks to prevent future crashes

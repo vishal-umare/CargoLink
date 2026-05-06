@@ -1,0 +1,65 @@
+================================================================================
+AUTH_DEBUG_SUMMARY: Login Flow Fix
+================================================================================
+
+1. ROOT CAUSE OF LOGIN ISSUE
+--------------------------------------------------------------------------------
+Two frontend bugs were found. The backend API was working correctly all along.
+
+BUG 1 — apiFetch 401 Interception (Critical)
+  File: frontend/src/lib/api.ts
+  Problem: The `apiFetch` wrapper intercepts ALL 401 responses and automatically
+  clears localStorage + redirects to the login page. This was designed for token
+  expiration on protected routes. However, the login endpoint (/api/auth/login)
+  ALSO returns 401 when the password is wrong. So when a user typed the wrong
+  password, the 401 handler would fire, wipe the storage, and redirect — making
+  it look like the app "crashed" instead of showing "Invalid email or password".
+
+BUG 2 — Stale Profile in Login Redirect (Navigation Bug)
+  File: frontend/src/pages/Login.tsx
+  Problem: After calling `signIn()`, the code used `profile?.role` inside a
+  `setTimeout` to decide where to navigate (driver dashboard vs shipper dashboard).
+  But `profile` was captured from the React state BEFORE signIn updated it.
+  React state updates are async, so `profile` was always `null` in the setTimeout
+  closure, causing ALL users to redirect to `/` instead of their dashboard.
+
+2. FIX APPLIED
+--------------------------------------------------------------------------------
+FIX 1 — Exclude Auth Endpoints from 401 Handler
+  In `api.ts`, added a check: `const isAuthEndpoint = endpoint.startsWith('/auth/');`
+  The 401 handler now only fires for non-auth endpoints:
+    `if (response.status === 401 && !isAuthEndpoint)`
+  This allows login/register to properly return 401 errors to the calling code,
+  which then displays them as toast messages.
+
+FIX 2 — Read Fresh User Data from localStorage
+  In `Login.tsx`, replaced `profile?.role` with:
+    `const storedUser = JSON.parse(localStorage.getItem('user') || '{}');`
+  This reads the user data that `signIn()` JUST wrote to localStorage, ensuring
+  the role is always accurate regardless of React's re-render timing.
+
+FIX 3 — Better Backend Logging
+  In `authController.js`, added structured logging:
+    [LOGIN] Attempt for email: user@example.com
+    [LOGIN] Failed: No user found with email user@example.com
+    [LOGIN] Failed: Wrong password for user@example.com
+    [LOGIN] Success for user@example.com (role: shipper)
+  Also added input validation for missing email/password fields (400 response).
+
+3. HOW LOGIN FLOW WORKS (END-TO-END)
+--------------------------------------------------------------------------------
+Step 1: User types email + password on Login.tsx and clicks "Sign In"
+Step 2: Login.tsx calls useAuth().signIn(email, password)
+Step 3: signIn() calls apiFetch('/auth/login', { method: 'POST', body: { email, password } })
+Step 4: apiFetch sends the request to http://localhost:5000/api/auth/login
+Step 5: Backend authController.loginUser:
+        a) Looks up user by email in MongoDB
+        b) Compares the plain-text password with the stored bcrypt hash
+        c) If match → returns { _id, name, email, role, token }
+        d) If no match → returns 401 { message: 'Invalid email or password' }
+Step 6: signIn() receives the response:
+        a) If 200 → stores token + user in localStorage, sets React state, returns { error: null }
+        b) If 401 → returns { error: new Error('Invalid email or password') }
+Step 7: Login.tsx checks the error:
+        a) If error → shows toast with the error message
+        b) If success → reads role from localStorage and navigates to correct dashboard

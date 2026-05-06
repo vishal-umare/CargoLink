@@ -1,0 +1,36 @@
+================================================================================
+PHASE 5 SUMMARY: Load APIs Setup
+================================================================================
+
+1. WHAT WAS IMPLEMENTED IN THIS STEP
+--------------------------------------------------------------------------------
+- Created `loadController.js` which contains four main functions (APIs):
+  1. `createLoad`: Allows a shipper to post a new job.
+  2. `getAllLoads`: Allows drivers (or anyone logged in) to see available jobs.
+  3. `getShipperLoads`: Allows a shipper to see only the jobs they created.
+  4. `updateLoadStatus`: Allows updating a load from 'pending' to 'in_transit', etc.
+- Created `loadRoutes.js` to map these functions to URLs like `/api/loads`.
+- Added the authentication and role middleware from Phase 4 to protect these routes.
+
+2. WHY THIS STEP IS IMPORTANT
+--------------------------------------------------------------------------------
+The "Load" is the core entity of CargoLink. Without these APIs, shippers can't post jobs, and drivers can't find them. We also applied our security middleware here: if a driver attempts to call the `POST /api/loads` route to create a load, our `authorize('shipper')` middleware will block them, ensuring the app works as intended.
+
+3. HOW IT WORKS (SIMPLE EXPLANATION)
+--------------------------------------------------------------------------------
+- When a shipper wants to create a load, they send data (pickup, delivery, weight) to `/api/loads`. 
+- Before the code runs, our `protect` middleware checks their token and attaches their user ID to `req.user`. 
+- Then, our `createLoad` controller takes that data, adds the shipper's ID as the `shipperId`, and saves it to MongoDB.
+- When retrieving loads, we use Mongoose's `.populate()` feature. Instead of just returning a random string of numbers for the `shipperId`, it goes into the User database, finds the shipper, and brings back their actual Name and Email so the driver knows who they are dealing with.
+
+4. KEY CONCEPTS USED
+--------------------------------------------------------------------------------
+- req.user._id: Using the ID of the currently logged-in user (provided by the token) to ensure data belongs to the correct person, instead of letting the user type in their own ID.
+- Mongoose .populate(): A powerful MongoDB feature that acts like a "JOIN" in SQL. It replaces an ID reference with the actual data of the referenced document.
+- req.params.id: How we grab the ID from a URL (e.g., `/api/loads/12345` -> `12345`).
+
+5. COMMON MISTAKES TO AVOID
+--------------------------------------------------------------------------------
+- Trusting the frontend: Never let the frontend send you `shipperId` in the body when creating a load. A hacker could send someone else's ID. Always grab it from `req.user._id` which comes from the securely verified JWT token.
+- Forgetting `await`: Database calls take time. Always use `await Load.find()` or your variable will be an empty Promise instead of the actual data.
+- Not handling 404s: If someone tries to update a load that was already deleted, always check `if (!load)` and return a 404 Not Found error, otherwise the server might crash.

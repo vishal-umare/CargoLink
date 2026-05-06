@@ -1,0 +1,50 @@
+
+Frontend to Node.js Backend Migration Plan
+We will systematically migrate the frontend application away from direct Supabase database calls, redirecting them to our newly built custom Node.js Express backend (http://localhost:5000).
+
+Per the requirements, we will NOT remove Supabase entirely yet, and we will keep the UI logic completely unchanged. We are simply swapping the data layer.
+
+User Review Required
+IMPORTANT
+
+This migration touches almost every page in the application. Please review the proposed batches below. If this looks good, approve it and I will execute the migration file-by-file starting with the Authentication system.
+
+Proposed Changes
+We will execute this migration in batches to ensure nothing breaks:
+
+Batch 1: Authentication Layer
+[MODIFY] frontend/src/hooks/useAuth.tsx
+Change: Replace supabase.auth.signInWithPassword and signUp with fetch calls to /api/auth/login and /api/auth/register.
+Storage: Save the received JWT token and user profile into localStorage.
+State: Update the React context to use the local user state instead of supabase.auth.onAuthStateChange.
+Batch 2: Shipper Pages (Load Management)
+[MODIFY] frontend/src/pages/shipper/PostCargo.tsx
+Change: Replace supabase.from('loads').insert() with fetch('http://localhost:5000/api/loads', { method: 'POST', ... }). Attach Authorization: Bearer <token>.
+[MODIFY] frontend/src/pages/shipper/MyLoads.tsx
+Change: Replace supabase.from('loads').select('*').eq('shipper_id', ...) with fetch('http://localhost:5000/api/loads/myloads') inside React Query.
+Change: Replace the delete and update logic with respective API calls.
+[MODIFY] frontend/src/pages/shipper/Dashboard.tsx & LoadHistory.tsx
+Change: Redirect statistics and history fetch calls to use the local Node.js API instead of direct Supabase queries.
+Batch 3: Driver Pages (Job Board & Matches)
+[MODIFY] frontend/src/pages/driver/FindLoads.tsx
+Change: Replace supabase.from('loads').select('*').eq('status', 'open') with fetch('http://localhost:5000/api/loads').
+Change: Replace the load accept logic with fetch('http://localhost:5000/api/driver/bookings', { method: 'POST' }) to use our new matching system.
+[MODIFY] frontend/src/pages/driver/Matches.tsx & TripHistory.tsx & Dashboard.tsx
+Change: Redirect queries fetching assigned loads and bookings to our custom API endpoints.
+Batch 4: Profile & Map Components
+[MODIFY] frontend/src/pages/shipper/Profile.tsx & frontend/src/pages/driver/Profile.tsx
+Change: Update profile update logic to use standard fetch endpoints.
+[MODIFY] frontend/src/components/maps/*
+Change: The map components (like RouteMap.tsx and MapboxLocationPicker.tsx) currently fetch a Mapbox token via a Supabase Edge Function (supabase.functions.invoke('get-mapbox-token')). We will redirect this to a new local backend route (or just use an environment variable directly if preferred, but we will stick to the backend fetch).
+Open Questions
+NOTE
+
+Mapbox Token: Currently, the map components call a Supabase Edge Function to get the Mapbox token. Should I implement a quick /api/config/mapbox endpoint on the Node.js backend to serve this token, or should we just put the Mapbox token directly in the frontend .env for now?
+Types: Since we are not deleting Supabase yet, I will keep using the Tables<'loads'> TypeScript definitions to prevent massive UI type errors. Is this acceptable?
+Verification Plan
+Automated Tests
+No automated tests are currently set up.
+Manual Verification
+After each batch, we will verify the frontend still compiles (npm run dev).
+We will ensure login creates a valid JWT in localStorage.
+We will test creating a load and verifying it appears in the Driver's "Find Loads" dashboard via the new Node.js API.

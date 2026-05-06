@@ -1,0 +1,95 @@
+================================================================================
+PHASE 11 (BATCH 3) SUMMARY: Driver Pages Migration
+================================================================================
+
+1. WHAT WAS IMPLEMENTED
+--------------------------------------------------------------------------------
+All 5 driver pages + 2 shared components were migrated from Supabase to the
+custom Node.js/Express backend:
+
+FRONTEND FILES MIGRATED:
+  ✓ pages/driver/Dashboard.tsx     → apiFetch('/loads') + safe date rendering
+  ✓ pages/driver/FindLoads.tsx     → apiFetch('/loads') + apiFetch('/loads/:id/accept')
+  ✓ pages/driver/Matches.tsx       → apiFetch('/loads') + accept/complete endpoints
+  ✓ pages/driver/TripHistory.tsx   → apiFetch('/loads') filtered by assigned_driver_id
+  ✓ components/loads/LoadCard.tsx  → Removed Supabase type, local interface
+  ✓ components/loads/MatchingRidesModal.tsx → apiFetch for driver assignment
+  ✓ pages/shipper/MyLoads.tsx      → Removed Supabase type dependency
+
+BACKEND ADDITIONS:
+  ✓ PUT /api/loads/:id/accept    → Driver accepts a load (atomic, race-safe)
+  ✓ PUT /api/loads/:id/complete  → Driver marks load as delivered
+  ✓ PUT /api/loads/:id/status    → Now also accepts assigned_driver_id
+
+2. KEY FEATURES IMPLEMENTED
+--------------------------------------------------------------------------------
+A) JOB BOARD (FindLoads.tsx / Matches.tsx)
+   - Driver sees all open loads via GET /api/loads, filtered client-side
+   - Search by pickup city, drop city, minimum price
+   - Real-time UI update after accepting a load (React Query invalidation)
+
+B) BOOKING/REQUEST SYSTEM
+   - Driver clicks "Accept Load" → PUT /api/loads/:id/accept
+   - Backend atomically sets status='assigned' and assigned_driver_id
+   - Shipper can also assign manually via MatchingRidesModal
+
+C) DUPLICATE REQUEST PREVENTION
+   - Backend checks `if (load.status !== 'open')` before accepting
+   - Returns 400 "Load is no longer available" if already assigned
+   - Frontend shows the error message via toast
+
+D) REAL-TIME UI UPDATES
+   - React Query invalidation after every mutation:
+     * queryClient.invalidateQueries(['driver-available-loads'])
+     * queryClient.invalidateQueries(['driver-accepted-loads'])
+     * queryClient.invalidateQueries(['open-loads'])
+   - Accepted loads disappear from "Available" tab immediately
+   - Completed loads move to trip history
+
+E) TRIP COMPLETION
+   - Driver clicks "End Trip" → PUT /api/loads/:id/complete
+   - Backend verifies assigned_driver_id matches the caller
+   - Status changes to 'delivered'
+
+3. END-TO-END TEST RESULTS
+--------------------------------------------------------------------------------
+All 9 automated tests PASSED:
+
+  1. ✓ Shipper registration
+  2. ✓ Driver registration
+  3. ✓ Load creation (with created_at field)
+  4. ✓ Driver fetches job board
+  5. ✓ Driver accepts load → status: assigned
+  6. ✓ Duplicate accept blocked → 400: "Load is no longer available"
+  7. ✓ Driver completes trip → status: delivered
+  8. ✓ Load removed from open pool after completion
+  9. ✓ Shipper manual assign via status endpoint
+
+4. SUPABASE REMOVAL PROGRESS
+--------------------------------------------------------------------------------
+The following files NO LONGER import Supabase:
+  ✓ lib/api.ts
+  ✓ hooks/useAuth.tsx (still imports but only for signOut compatibility)
+  ✓ pages/shipper/PostCargo.tsx
+  ✓ pages/shipper/MyLoads.tsx
+  ✓ pages/shipper/Dashboard.tsx
+  ✓ pages/shipper/LoadHistory.tsx
+  ✓ pages/driver/Dashboard.tsx
+  ✓ pages/driver/FindLoads.tsx
+  ✓ pages/driver/Matches.tsx
+  ✓ pages/driver/TripHistory.tsx
+  ✓ components/loads/LoadCard.tsx
+  ✓ components/loads/MatchingRidesModal.tsx
+
+Files still importing Supabase (remaining for future batches):
+  - pages/driver/RideMap.tsx
+  - pages/driver/Profile.tsx
+  - pages/shipper/Profile.tsx
+  - hooks/useAuth.tsx (signOut only - intentional)
+
+5. COMMON PITFALLS AVOIDED
+--------------------------------------------------------------------------------
+  - Mongoose sends `createdAt` not `created_at` → backend toJSON mapping added
+  - formatDistanceToNow(new Date(undefined)) crashes React → null checks added
+  - 401 from login hitting global interceptor → auth endpoints excluded
+  - Stale profile in setTimeout → read from localStorage directly

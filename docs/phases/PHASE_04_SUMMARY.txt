@@ -1,0 +1,30 @@
+================================================================================
+PHASE 4 SUMMARY: Authentication & Authorization Middleware
+================================================================================
+
+1. WHAT WAS IMPLEMENTED IN THIS STEP
+--------------------------------------------------------------------------------
+- Created `backend/middleware/authMiddleware.js`.
+- Implemented the `protect` function: It acts as a bouncer at the door, verifying the JWT token.
+- Implemented the `authorize` function: It acts as a VIP check, ensuring only certain roles (like 'admin' or 'shipper') can access specific routes.
+
+2. WHY THIS STEP IS IMPORTANT
+--------------------------------------------------------------------------------
+Without this middleware, anyone on the internet could access any part of our application. If a user tries to delete a load, we need to know 100% that they are actually logged in (Authentication) and that they are actually an Admin or the Shipper who created it (Authorization). This middleware creates a secure wall around our API.
+
+3. HOW IT WORKS (SIMPLE EXPLANATION)
+--------------------------------------------------------------------------------
+- The "protect" middleware: When a user makes a request to a protected route, they must send their digital ID badge (the JWT token) in the request "Headers". The `protect` function looks at the header, decrypts the token, finds the user in the database, and temporarily attaches that user's information to the request object (`req.user`). 
+- The "authorize" middleware: This runs *after* `protect`. Since `protect` just attached the user's information to `req.user`, `authorize` simply checks `req.user.role`. If the route is for drivers only, and a shipper tries to enter, it blocks them with a "403 Forbidden" error.
+
+4. KEY CONCEPTS USED
+--------------------------------------------------------------------------------
+- Middleware: Functions that run *in the middle* of a request. Before a request reaches your final code, it must pass through the middleware. If the middleware calls `next()`, the request moves forward. If not, the request stops.
+- req.headers.authorization: The standard place to send security tokens in HTTP requests (usually formatted as "Bearer <token>").
+- req.user: A custom property we attach to the Express request object so that later functions know exactly who is making the request.
+
+5. COMMON MISTAKES TO AVOID
+--------------------------------------------------------------------------------
+- Forgetting to call `next()`: If your middleware doesn't call `next()`, your API will just hang forever and never send a response.
+- Exposing the password: When fetching the user inside the middleware, we use `.select('-password')` so we don't accidentally attach the sensitive password hash to `req.user` where it might accidentally get sent back to the frontend.
+- Sending tokens improperly: Frontend developers often forget to add the word "Bearer " before the token in their HTTP headers, causing the backend `split(' ')[1]` logic to fail.

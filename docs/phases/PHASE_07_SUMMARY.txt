@@ -1,0 +1,32 @@
+================================================================================
+PHASE 7 SUMMARY: Routing & Server Connection
+================================================================================
+
+1. WHAT WAS IMPLEMENTED IN THIS STEP
+--------------------------------------------------------------------------------
+- Organized the API into three main route files: `authRoutes.js`, `loadRoutes.js`, and `driverRoutes.js` (renamed from bookingRoutes for better URL structure).
+- Imported all of these routes into the main `server.js` file.
+- Bound each route file to a specific "URL Prefix":
+  - Authentication goes to `/api/auth`
+  - Load management goes to `/api/loads`
+  - Driver & Booking logic goes to `/api/driver`
+
+2. WHY THIS STEP IS IMPORTANT
+--------------------------------------------------------------------------------
+If we put all of our routing logic inside `server.js`, that file would quickly grow to thousands of lines of code and become impossible to read or fix. By separating them into individual files and using Express Router prefixes, our code remains modular, clean, and highly organized. 
+
+3. HOW IT WORKS (SIMPLE EXPLANATION)
+--------------------------------------------------------------------------------
+Think of `server.js` as the main reception desk of an office building. 
+- When a request comes in for `/api/auth/login`, the reception desk sees the `/api/auth` part and says, "Ah, you need the Authentication department!" and sends the request to `authRoutes.js`.
+- Inside `authRoutes.js`, it sees the `/login` part and says, "Ah, I know exactly what function handles that," and runs the `loginUser` controller function. 
+
+4. KEY CONCEPTS USED
+--------------------------------------------------------------------------------
+- Route Prefixing: Using `app.use('/prefix', routesFile)` in Express. This allows the routes inside the file to be written simply as `/` or `/login` instead of writing `/api/auth/login` every single time.
+- Modularity: Breaking a large program into smaller, manageable, and independent pieces.
+
+5. COMMON MISTAKES TO AVOID
+--------------------------------------------------------------------------------
+- Double Prefixing: A common beginner mistake is writing `app.use('/api/auth', ...)` in `server.js`, and then writing `router.post('/api/auth/login', ...)` inside the routes file. This accidentally creates the URL `/api/auth/api/auth/login`. Inside the routes file, always start from the prefix (just `/login`).
+- Forgetting to Export: If you forget `module.exports = router;` at the bottom of a routes file, `server.js` will crash when it tries to import it.
